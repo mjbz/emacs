@@ -1,7 +1,10 @@
 ;;; .emacs --- Summary:
 ;;  Max Bozzi's LINUX GNU Emacs init file.
 
+;;  This file needs some serious help.
+
 ;;; Commentary:
+;;
 ;;  My original setup used a collection of files which I'd drop into
 ;;  .emacs.d.  I still think that that was a decent idea; else this file
 ;;  might get a bit long.  Of course, though, it mitigates the problems
@@ -24,7 +27,9 @@
 (eval-when-compile (require 'cl-lib))
 ;; Should be necessary for macros only.
 
-(defmacro when-found (package ))
+(defmacro when-found (package &rest body)
+  "If and only if PACKAGE is found and available, execute BODY."
+  `(when (retrieve-and-load ,package) ,@body))
 
 ;;  Set custom-variables in another file.  Load them immediately.
 (let ((customization-file-path
@@ -110,30 +115,30 @@ returns t if NEW-THEME was loaded, nil otherwise."
 ;;  But only when we have graphics support.
 (add-to-list 'custom-theme-load-path "~/.emacs.d/themes/")
 
-(let ((my-theme 'at-nighttime))              ; <-- There it is!
+(let ((my-theme 'jazz))              ; <-- There it is!
   (if (display-graphic-p)
       (unless (ignore-errors
                 (switch-theme-exclusive my-theme))
-        (disable-all-themes))))
+        (disable-all-themes)))
 
-;;  Enable smart-mode-line prettiness:
-(when (retrieve-and-load 'smart-mode-line)
-  (declare-function sml/setup "smart-mode-line.el")
-  (declare-function sml/apply-theme "smart-mode-line.el")
-  
-  (sml/setup)
-  (sml/apply-theme 'dark)
+  ;;  Enable smart-mode-line prettiness:
+  (when-found 'smart-mode-line
+	      (declare-function sml/setup "smart-mode-line.el")
+	      (declare-function sml/apply-theme "smart-mode-line.el")
+	      
+	      (sml/setup)
+	      (sml/apply-theme 'dark)
 
-  (defvar sml/replacer-regexp-list)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/cpp/at-nighttime/" ":AN:")
-	       'append)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/cpp/" ":CPP:")
-	       'append)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/" ":DEV:")
-	       'append))
+	      (defvar sml/replacer-regexp-list)
+	      (add-to-list 'sml/replacer-regexp-list
+			   '("^~/devel/cpp/at-nighttime/" ":AN:")
+			   'append)
+	      (add-to-list 'sml/replacer-regexp-list
+			   '("^~/devel/cpp/" ":CPP:")
+			   'append)
+	      (add-to-list 'sml/replacer-regexp-list
+			   '("^~/devel/" ":DEV:")
+			   'append)))
 
 ;;  Initial scratch messages:
 ;;  Generate a random initial "meaningful message" from the list.
@@ -326,7 +331,6 @@ Bind `%s' to keyboard %s via local-set-key."
   (interactive)
   (insert "std::"))
 
-
 (defun c++-wrap-round (&optional n-sexps)
   "Wrap N-SEXPS sexps surrounding point with parentheses."
   (interactive "p")
@@ -372,13 +376,12 @@ Bind `%s' to keyboard %s via local-set-key."
   (interactive)
   (insert "<>") (backward-char))
 
-(defun lisp-insert-lambda nil 
+(defun lisp-insert-lambda nil
   "Insert the `lambda' keyword in the current buffer."
   (interactive)
   (insert "lambda "))
 
 ;;  Bind C++ commands:
-
 (bind-mode-commands 'c++-mode-hook
   '((c++-insert-paired-angle-braces "C-M-<")
     (c++-wrap-round "M-(")
@@ -408,16 +411,31 @@ Bind `%s' to keyboard %s via local-set-key."
 (bind "<f10>" #'other-window)
 (bind "<f11>" #'next-buffer)
 
+(global-unset-key (kbd "C-M-l"))
+
 ;; I do this much more than I transpose words.  I don't transpose that
 ;; much anyways.
 (bind-mode-commands 'lisp-mode-hook
   '((transpose-sexps "M-t")
     (lisp-insert-lambda "C-M-l")))
 
-;;  Toggle dired and wdired.
+(bind-mode-commands 'emacs-lisp-mode-hook
+  '((lisp-insert-lambda "C-M-l")))
+
+(bind-mode-commands 'lisp-interaction-mode-hook
+  '((lisp-insert-lambda "C-M-l")))
+
+(mapc (lambda (mode-symbol)
+ 	(font-lock-add-keywords
+ 	 mode-symbol
+ 	 '(("[,`'.]\\|#'" . font-lock-keyword-face)
+ 	   ("[()]"       . font-lock-negation-char-face))))
+      '(lisp-mode lisp-interaction-mode emacs-lisp-mode ielm-mode))
+
+;;  toggle dired and wdired.
 (bind-mode-command-to-key dired-mode-hook
 			  wdired-change-to-wdired-mode
-        "C-c C-w")
+			  "C-c C-w")
 (bind-mode-command-to-key wdired-mode-hook wdired-exit "C-c C-w")
 
 (defun consume-sexp-from-inside nil
@@ -447,7 +465,7 @@ Bind `%s' to keyboard %s via local-set-key."
 (scroll-bar-mode -1)
 (menu-bar-mode -1)
 
-(electric-pair-mode   t)
+(electric-pair-mode)
 (electric-indent-mode t)
 
 (display-time-mode t)
@@ -550,7 +568,6 @@ Bind `%s' to keyboard %s via local-set-key."
 (put 'alambda 'lisp-indent-function 1)
 (put 'with-gensyms 'lisp-indent-function 1)
 (put 'bind-mode-commands 'lisp-indent-function 1)
-
 
 ;;  Semantic mode
 (when (retrieve-and-load 'semantic)
