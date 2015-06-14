@@ -151,7 +151,8 @@ For the sake of simplicity, the format of the message-file is about
 as easy as possible: At least two blank lines separate quotes.
 There are no comments.  There are no metacharacters.  Sorry!
 
-Maybe I'll make this better eventually."
+Maybe I'll make this better eventually, but who cares.  Don't fix
+what ain't broke."
   (let ((message-file "~/.emacs.d/startupquotes.txt"))
     (when (file-readable-p (expand-file-name message-file))
       (with-temp-buffer
@@ -191,7 +192,7 @@ quotes, please!\n")))
 ;;  Pretty frame transparency under X.  Perhaps there is a way to get
 ;;  emacs to draw transparently under the terminal as well (i.e.,
 ;;  launched with `-nw').  But I rarely use it like that.
-(defun clamp-integer-to-range (integer lower upper)
+(defun clamp-integer-to-closed-interval (integer lower upper)
   "Restrict INTEGER to the range [LOWER, UPPER].
 If INTEGER is not in [LOWER, UPPER], clamp it to the closest of
 the two.  It is implied that LOWER < UPPER."
@@ -212,9 +213,9 @@ If called with a negative argument, make the frame less transparent."
   (let ((current-alpha (car (frame-parameter nil 'alpha))))
     (if current-alpha
         (set-frame-alpha-percent
-         (clamp-integer-to-range
+         (clamp-integer-to-closed-interval
           (- current-alpha difference) 0 100))
-      (clamp-integer-to-range
+      (clamp-integer-to-closed-interval
        (- difference 100) 0 100))))
 
 (set-frame-alpha-percent 74)
@@ -314,14 +315,15 @@ Bind `%s' to keyboard %s via local-set-key."
                (symbol-name command) keybind)
       (local-set-key (kbd ,keybind) (function ,command)))))
 
-(defun bind-mode-commands (mode-hook command-keys)
-  "Add a key-bind in MODE-HOOK matching COMMAND-KEYS."
-  (cl-loop for (command key) in command-keys do
-	   (eval `(bind-mode-command-to-key ,mode-hook ,command ,key))))
+(defun bind-mode-commands (mode-hooks command-keys)
+  "Bind all of the modes in MODE-HOOKS matching COMMAND-KEYS."
+  (cl-loop for mode in mode-hooks do
+    (cl-loop for (command key) in command-keys do
+             (eval `(bind-mode-command-to-key mode ,command ,key)))))
 
 ;;;  Don't forget to check SLIME startup.
 
-(defun bind (key command)
+(defun global-bind (key command)
   "Bind the keypresses stored in KEY to COMMAND, globally."
   (global-set-key (kbd key) command))
 
@@ -361,11 +363,6 @@ Bind `%s' to keyboard %s via local-set-key."
 (defun match-chars (pair-string)
   "Test to see if the two characters in PAIR-STRING are next-to point."
   (interactive)
-  (when (not (stringp pair-string))
-    (error (error-message-string "pair-string is not a string.")))
-  (when (not (= (length pair-string) 2))
-    (error (error-message-string
-            "pair-string isn't a pair of characters.")))
   (and (string-equal (string (preceding-char))
                      (substring pair-string 0 1))
        (string-equal (string (following-char))
@@ -381,55 +378,114 @@ Bind `%s' to keyboard %s via local-set-key."
   (interactive)
   (insert "lambda "))
 
+(defun lisp-end-of-sexp nil
+  "Move point to the end of the current s-expression."
+  (interactive)
+  (end-of-sexp))
+
+(defun lisp-down-and-end-of-sexp nil
+  "Move point forward, down and to the end of the current s-expression."
+  (interactive)
+  (down-list)
+  (end-of-sexp))
+
+(defun lower-current-line (n-times)
+  "Lower the current line to the one N-TIMES below, adding whitespace."
+  (interactive "p")
+  (save-excursion
+    (beginning-of-line)
+    (newline n-times)))
+
+(defun raise-current-line (n-times)
+  "Raise the current-line N-TIMES lines up, and indent."
+  (interactive "p")
+  (cl-loop repeat n-times do
+	   (delete-indentation)
+	   (indent-for-tab-command)))
+
+(defun raise-next-line (n-times)
+  "Raise the next line to the one N-TIMES above, folding whitespace."
+  (interactive "p")
+  (save-excursion
+    (cl-loop repeat n-times do
+	     (forward-line)
+	     (raise-current-line 1)
+	     (delete-trailing-whitespace
+	      (point)
+	      (line-end-position))))
+  (indent-for-tab-command))
+
+(defun lower-next-line (n-times)
+  "Lower the next line N-TIMES lines below, entering newlines."
+  (interactive "p")
+  (save-excursion
+    (end-of-line)
+    (open-line n-times)))
+
 ;;  Bind C++ commands:
-(bind-mode-commands 'c++-mode-hook
+(bind-mode-commands '(c++-mode-hook)
   '((c++-insert-paired-angle-braces "C-M-<")
     (c++-wrap-round "M-(")
     (remove-pair-or-electric-delete "DEL")
     (c++-insert-std "C-M-;")))
 
 ;;  Compile!
-(bind "<f5>" #'compile)
+(global-bind "<f5>" #'compile)
 
 ;;  Regular expression searching by default!
-(bind "C-s" #'isearch-forward-regexp)
-(bind "C-r" #'isearch-backward-regexp)
-(bind "C-c C-s" #'isearch-forward)
-(bind "C-c C-r" #'isearch-backward)
+(global-bind "C-s" #'isearch-forward-regexp)
+(global-bind "C-r" #'isearch-backward-regexp)
+(global-bind "C-c C-s" #'isearch-forward)
+(global-bind "C-c C-r" #'isearch-backward)
 
 ;;  No quick-list directory --- dired instead.
-(bind "C-x C-d" #'dired)
+(global-bind "C-x C-d" #'dired)
 
 ;;  buffer-movement:
-(bind "C-'" #'ff-find-other-file)
-(bind "C-c C-p" #'previous-buffer)
-(bind "C-c C-n" #'next-buffer)
-(bind "C-c p" #'previous-buffer)
-(bind "C-c n" #'next-buffer)
+(global-bind "C-'"     #'ff-find-other-file)
+(global-bind "C-c C-p" #'previous-buffer)
+(global-bind "C-c C-n" #'next-buffer)
+(global-bind "C-c p"   #'previous-buffer)
+(global-bind "C-c n"   #'next-buffer)
 
-(bind "<f9>" #'previous-buffer)
-(bind "<f10>" #'other-window)
-(bind "<f11>" #'next-buffer)
+(global-bind "<f9>"  #'previous-buffer)
+(global-bind "<f10>" #'other-window)
+(global-bind "<f11>" #'next-buffer)
+
+(mapc #'global-unset-key
+      (list (kbd "M-i")
+	    (kbd "<tab>")
+	    (kbd "C-o")
+	    (kbd "M-o")
+	    (kbd "C-M-o")))
+
+(global-bind "M-i"   #'raise-current-line)
+(global-bind "<tab>"   #'lower-current-line)	; <tab> is C-i
+
+(global-bind "M-o"   #'raise-next-line)
+(global-bind "C-o"   #'open-line)
+(global-bind "C-M-o" #'lower-next-line)
 
 (global-unset-key (kbd "C-M-l"))
+(global-unset-key (kbd "C-z"))
 
+(defvar *lisp-mode-common-hooks* '(lisp-mode-hook
+                                   emacs-lisp-mode-hook
+                                   lisp-interaction-mode-hook
+                                   ielm-mode-hook
+                                   slime-mode-hook)
+  "A collection of hooks for Lisp modes.")
 ;; I do this much more than I transpose words.  I don't transpose that
 ;; much anyways.
-(bind-mode-commands 'lisp-mode-hook
+(bind-mode-commands *lisp-mode-common-hooks*
   '((transpose-sexps "M-t")
     (lisp-insert-lambda "C-M-l")))
 
-(bind-mode-commands 'emacs-lisp-mode-hook
-  '((lisp-insert-lambda "C-M-l")))
-
-(bind-mode-commands 'lisp-interaction-mode-hook
-  '((lisp-insert-lambda "C-M-l")))
 
 (mapc (lambda (mode-symbol)
  	(font-lock-add-keywords
  	 mode-symbol
- 	 '(("[,`'.]\\|#'" . font-lock-keyword-face)
- 	   ("[()]"       . font-lock-negation-char-face))))
+ 	 '(("[,`'.]\\|#'" . font-lock-keyword-face))))
       '(lisp-mode lisp-interaction-mode emacs-lisp-mode ielm-mode))
 
 ;;  toggle dired and wdired.
@@ -447,8 +503,8 @@ Bind `%s' to keyboard %s via local-set-key."
   (forward-sexp (- 1))
   (kill-region (point) (mark)))
 
-(bind "C-S-k" #'consume-sexp-from-inside)
-(bind "C-;" #'iedit-mode)
+(global-bind "C-S-k" #'consume-sexp-from-inside)
+(global-bind "C-;" #'iedit-mode)
 
 ;;  Keep updating the directory listing in the case of an external
 ;;  change.
@@ -531,7 +587,7 @@ Bind `%s' to keyboard %s via local-set-key."
   
   (load (expand-file-name "~/quicklisp/slime-helper.el"))
 
-  (bind-mode-commands 'slime-mode-hook
+  (bind-mode-commands '(slime-mode-hook)
     '((slime-documentation "C-h f")
 			(describe-function "C-h M-f")
 			(slime-describe-symbol "C-h v")
