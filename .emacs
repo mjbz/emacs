@@ -71,13 +71,6 @@ The following sources will be checked, in order:
 	    feature))
     result))
 
-(defun every (predicate list)
-  "Evaluate "
-  (let ((result t))
-  (cl-loop for element in list do
-	   (when (not (funcall predicate element)) (setq result nil))
-	   finally return result)))
-
 (defmacro init/when-package-available (packages &rest body)
   "When all of PACKAGES is available to be loaded, evaluate BODY."
   `(when (cl-every #'init/try-retrieve-and-load (quote ,packages))
@@ -506,7 +499,7 @@ quotes, please!\n")))
       (forward-sexp n-sexps) ; n-sexps is negative here.
       (insert "("))))
 
-(defbind remove-pair-or-electric-delete nil (("DEL") '(c-mode-common-hook)) 
+(defbind remove-pair-or-electric-delete nil (("DEL") '(c-mode-common-hook))
   "Remove both paired characters or just behave normally."
   (interactive)
   (cl-flet ((match-chars (pair-string)
@@ -524,7 +517,7 @@ quotes, please!\n")))
         (progn (delete-char -1) (delete-char 1))
       (progn (backward-delete-char-untabify 1)))))
 
-(defbind insert-paired-angle-braces nil (("C-<"))
+(defbind insert-paired-angle-braces nil (("C-<") '(c++-mode-hook))
   "Insert two angle brackets (<>) and position the cursor between."
   (interactive)
   (insert "<>") (backward-char))
@@ -589,7 +582,7 @@ quotes, please!\n")))
 
 (bind-mode-command-to-key dired-mode-hook
                           wdired-change-to-wdired-mode "C-c C-w")
-(bind-mode-command-to-key wdired-mode-hook 
+(bind-mode-command-to-key wdired-mode-hook
                           wdired-exit "C-c C-w")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
