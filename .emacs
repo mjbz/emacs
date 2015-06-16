@@ -135,6 +135,7 @@ bound globally to key-notation(s).
 
 \(defbind do-clever-things \(n-times some-other-argument\)
   \(\(\"\\[forward-char]\"\) \(emacs-lisp-mode-hook\)\)
+  \(interactive \"p\"\)
   \(save-excursion
     \(do-foo n-times\)
     \(do-bar n-times some-other-argument\)\)\)"
