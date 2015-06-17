@@ -550,9 +550,10 @@ quotes, please!\n")))
 (defbind raise-current-line (n-times) (("M-i"))
   "Raise the current-line N-TIMES lines up, and indent."
   (interactive "p")
-  (cl-loop repeat n-times do
-	   (delete-indentation)
-     (indent-for-tab-command)))
+  (save-excursion
+   (cl-loop repeat n-times do
+	    (delete-indentation)
+	    (indent-for-tab-command))))
 
 (defbind raise-next-line (n-times) (("M-o"))
   "Raise the next line to the one N-TIMES above, folding whitespace."
