@@ -527,16 +527,18 @@ quotes, please!\n")))
   (interactive)
   (insert "lambda "))
 
-(defbind lisp-end-of-sexp nil (("M-_") lisp-mode-common-hooks)
+(defbind lisp-end-of-list nil (("M-_") lisp-mode-common-hooks)
   "Move point to the end of the current s-expression."
   (interactive)
-  (end-of-sexp))
+  (backward-up-list)
+  (forward-sexp)
+  (backward-char))
 
-(defbind lisp-down-and-end-of-sexp nil (("C-M-S-d") lisp-mode-common-hooks)
+(defbind lisp-down-and-end-of-list nil (("C-M-S-d") lisp-mode-common-hooks)
   "Move point forward, down and to the end of the current s-expression."
   (interactive)
   (down-list)
-  (end-of-sexp))
+  (lisp-end-of-list))
 
 (defbind lower-current-line (n-times) (("<tab>"))
   "Lower the current line to the one N-TIMES below, adding whitespace."
