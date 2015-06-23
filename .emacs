@@ -27,7 +27,15 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Code:
 ;;;
-;;; Helper functions
+;;; Enable MELPA and GNU/ELPA repositories.
+(require 'package)
+(package-initialize)
+
+(add-to-list 'package-archives
+             '("melpa" . "http://melpa.milkbox.net/packages/"))
+(add-to-list 'package-archives
+             '("gnu" . "http://elpa.gnu.org/packages/"))
+
 (eval-when-compile (require 'cl-lib))
 
 ;;; Put custom variables into another file
@@ -41,14 +49,21 @@
   (warn "Insufficient permissions to write the
 automatic customization file at %s" *init/customization-file-path*))
 
-;;; Enable MELPA and GNU/ELPA repositories.
-(require 'package)
-(package-initialize)
+;;; Helper functions
+(defun feature-available-p (feature)
+  "Return t if `FEATURE' is available."
+  (or (featurep feature)
+      (package-installed-p feature)))
 
-(add-to-list 'package-archives
-             '("melpa" . "http://melpa.milkbox.net/packages/"))
-(add-to-list 'package-archives
-             '("gnu" . "http://elpa.gnu.org/packages/"))
+(defun prompt-fetch-feature (feature)
+  "Ask the user to install a package from enabled repositories.
+  If the user complies, try to download and install.  Return t
+  if the package was successfully obtained, otherwise nil."
+  (if (yes-or-no-p
+       (format "Attempt to fetch `%S' from repositories? "
+	       feature))
+      (package-install feature))
+  (feature-available-p feature))
 
 (defun init/try-retrieve-and-load (feature)
   "Load FEATURE if it's available.  If it isn't, try to obtain it.
@@ -59,17 +74,13 @@ feature couldn't be loaded, return nil.
 The following sources will be checked, in order:
   already-installed packages and
   all sources in `package-archives'."
-  (let ((result (or (package-installed-p feature)
-                    (featurep feature)
-                    (when (yes-or-no-p
-			   (format "Attempt to fetch `%S' from repositories? "
-				   feature))
-		      (ignore-errors (package-install feature)))
-                    (get-from-cloud feature))))
-    (when (null result)
-      (warn "Was unable to `retrieve-and-load' the package `%S'.\n"
-	    feature))
-    result))
+  (if (or (feature-available-p feature)
+	  (with-demoted-errors "Fetch failed: %s"
+	    (prompt-fetch-feature feature)))
+      feature
+    (warn "Couldn't `retrieve-and-load' the package `%S'."
+	  feature)))
+
 
 (defmacro init/when-package-available (packages &rest body)
   "When all of PACKAGES is available to be loaded, evaluate BODY."
@@ -88,9 +99,10 @@ Returns the value of the `add-hook' expression."
     (defun ,(intern
              (concat "bind-" (symbol-name command)))
       nil
-      ,(format "This is an automatically-generated function.
+      ,(format "Thihcs is an automatically-generated function.
 Bind `%s' to keyboard %s via local-set-key."
                (symbol-name command) keybind)
+      (local-unset-key (kbd ,keybind))
       (local-set-key (kbd ,keybind) (function ,command)))))
 
 (defun bind-mode-commands (mode-hooks command-keys)
@@ -161,62 +173,11 @@ bound globally to key-notation(s).
                              wdired-mode-hook))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Builtin settings:
+;;; Color themes, font, and appearance code
 ;;;
-(auto-fill-mode        t)
-(set-fill-column       72)
-(global-hl-line-mode   t)
-(ido-mode              t)
-(delete-selection-mode t)
-(display-time-mode     t)
-(show-paren-mode       t)
-(fringe-mode           (cons 3 3))
-(electric-pair-mode)
-(column-number-mode)
-(auto-fill-mode)
-(electric-indent-mode  t)
-(tool-bar-mode         (- 1))
-(menu-bar-mode         (- 1))
-(scroll-bar-mode       (- 1))
-(semantic-mode t)
+(with-demoted-errors "Couldn't load font: %S"
+  (set-frame-font "clean"))
 
-(global-semantic-idle-scheduler-mode t)
-
-(setq inhibit-splash-screen    		      t
-      tab-width                		      2
-      indent-tabs-mode         		      nil
-      user-full-name           		      "Max Bozzi"
-      user-mail-address        		      "maxwelljb22@gmail.com"
-      x-select-enable-clipboard-manager t
-      x-select-enable-clipboard         t
-      kept-new-versions                 4
-      kept-old-versions                 2
-      echo-keystrokes                   0.001
-      use-dialog-box                    nil
-      visible-bell                      t
-      version-control                   t
-      disabled-command-function         nil
-      backup-by-copying                 t
-      delete-old-versions               t)
-
-(unless indicate-empty-lines
-  (toggle-indicate-empty-lines))
-
-(defvar ff-always-in-other-window t
-  "Find file/other file in new windows..")
-(defvar ido-enable-flex-matching  t
-  "Use IDO flex matching as much as possible.")
-
-;; Backups
-(let ((backup-directory (expand-file-name "~/.emacs.d/saves")))
-  (if (file-writable-p backup-directory)
-      (setq backup-directory-alist (list (cons "." backup-directory)))
-    (warn "Backup directory %S is not writable.  Backups will not be
-made." 'backup-directory)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Color themes and appearance code
-;;;
 (add-to-list 'custom-theme-load-path "~/.emacs.d/themes/")
 
 (defun disable-all-themes nil
@@ -233,7 +194,6 @@ returns t if NEW-THEME was loaded, nil otherwise."
         (disable-all-themes)
         (load-theme new-theme 'dont-confirm))
     (warn "Couldn't load the theme named `%S'" new-theme)))
-
 
 (defvar *init/my-theme* 'jazz)
 (switch-theme-exclusive *init/my-theme*)
@@ -288,60 +248,70 @@ Maybe I'll make this better eventually."
          "\n[[:space:]]*\n[[:space:]]*\n" t)))))
 
 (setq initial-scratch-message
-      (let ((quote-list (init/get-initial-scratch-message-list)))
-        (if quote-list
-            (elt
-             (mapcar
-              (lambda (str) 		; Comment the quote now.
-                (format "%s%s\n\n" ";; "
-                        (replace-regexp-in-string "\n" "\n;; " str)))
-              quote-list)
-             (random
-              (length quote-list)))
-          ";; You suck.  This is the default message.  Copy down some \
-quotes, please!\n")))
+      (concat
+       (let ((quote-list (init/get-initial-scratch-message-list)))
+	 (if quote-list
+	     (elt (mapcar
+		   (lambda (str)
+		     (format "%s%s\n\n" ";; "
+			     (replace-regexp-in-string "\n" "\n;; "
+						       str)))
+		   quote-list)
+		  (random
+		   (length quote-list)))
+	   ";; You suck.  This is the default message.  Copy down some \
+quotes, please!\n"))
+       "(progn (text-mode) (erase-buffer))\n"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Non-default mode settings
 ;;;
 
+;; Icicles:
+(init/when-package-available (icicles)
+  (require 'icicles)
+  (icy-mode t))
+
 ;; Smart mode-line
-(init/when-package-available (smart-mode-line)
-  (declare-function sml/setup "smart-mode-line.el")
-  (declare-function sml/apply-theme "smart-mode-line.el")
-	    
-  (sml/setup)
-  (sml/apply-theme 'dark)
+;; (init/when-package-available (smart-mode-line)
+;;   (declare-function sml/setup "smart-mode-line.el")
+;;   (declare-function sml/apply-theme "smart-mode-line.el")
 
-  (defvar sml/replacer-regexp-list)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/cpp/at-nighttime/" ":AN:")
-	       'append)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/cpp/" ":CPP:")
-	       'append)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/" ":DEV:")
-	       'append)
+;;   (sml/setup)
+;;   (sml/apply-theme 'respectful)
 
-  (smart-mode-line-enable))
-
-;; Pretty-lambda(da)
+;;   (defvar sml/replacer-regexp-list)
+;;   (add-to-list 'sml/replacer-regexp-list
+;; 	       '("^~/devel/cpp/at-nighttime/" ":AN:")
+;; 	       'append)
+;;   (add-to-list 'sml/replacer-regexp-list
+;; 	       '("^~/devel/cpp/" ":CPP:")
+;; 	       'append)
+;;   (add-to-list 'sml/replacer-regexp-list
+;; 	       '("^~/devel/" ":DEV:")
+;; 	       'append)
+;;   (add-to-list 'sml/replacer-regexp-list
+;; 	       '("^~/devel/lisp" ":LISP:")
+;; 	       'append)
+;;   (sml/fill-char)
+;;   (smart-mode-line-enable))
+ 
+;; Drew Adam's Pretty-lambda
 (init/when-package-available (pretty-lambdada)
-  (pretty-lambda-for-modes))
+  (pretty-lambda-for-modes)) 
 
 ;; Paredit
 (init/when-package-available (paredit)
   (let ((turn-on-paredit-hooks '(emacs-lisp-mode-hook
-				 ielm-mode-hook
-				 lisp-mode-hook
-				 lisp-interaction-mode-hook
-				 ielm-mode-hook
-				 scheme-mode-hook)))
+                                 ielm-mode-hook lisp-mode-hook
+                                 lisp-interaction-mode-hook
+                                 ielm-mode-hook
+                                 scheme-mode-hook)))
     "List of hooks to which `enable-paredit-mode' will be attached."
-    (autoload 'enable-paredit-mode "paredit" "enable paredit in lisp")
+    (autoload 'paredit-mode "paredit" "enable paredit in lisp")
     (mapc (lambda (hook)
-	    (add-hook hook #'enable-paredit-mode))
+	    (add-hook
+	     hook #'enable-paredit-mode))
 	  turn-on-paredit-hooks)))
 
 
@@ -360,26 +330,27 @@ quotes, please!\n")))
       
       (setq slime-contribs '(slime-fancy))
       (setq slime-lisp-implementations
-	    `((sbcl (,*my-common-lisp-interpreter*))))
+            `((sbcl (,*my-common-lisp-interpreter*))))
       (setq slime-default-lisp 'sbcl)
   
       (defvar inferior-lisp-program)
       (setq inferior-lisp-program *my-common-lisp-interpreter*)
 
       (let ((quicklisp (expand-file-name "~/quicklisp/slime-helper.el")))
-	(if (file-readable-p quicklisp)
-	    (load quicklisp)
-	  (warn "Can't find QuickLisp at %S." quicklisp)))
-
+        (if (file-readable-p quicklisp)
+            (load quicklisp)
+          (warn "Can't find QuickLisp at %S." quicklisp)))
+      
       (bind-mode-commands 'slime-mode-hook
-	'((slime-documentation "C-h f")
-	  (describe-function "C-h M-f")
-	  (slime-describe-symbol "C-h v")
-	  (describe-variable "C-h M-v"))))))
+        '((slime-documentation "C-h f")
+          (describe-function "C-h M-f")
+          (slime-describe-symbol "C-h v")
+          (describe-variable "C-h M-v"))))))
 
 ;; EDE
-(init/when-package-available (ede)
-  (global-ede-mode))
+(when nil
+  (init/when-package-available (ede)
+    (global-ede-mode)))
 
 ;; Auto-Complete
 (init/when-package-available (auto-complete)
@@ -480,6 +451,11 @@ quotes, please!\n")))
    ("C-x C-d" dired)
    ("C-;"     iedit-mode)))
 
+(defbind go-to-scratch-buffer nil (("<f6>"))
+  "Jump instantly to the scratch buffer."
+  (interactive)
+  (switch-to-buffer "*scratch*"))
+
 (defbind insert-std nil (("C-M-;") c-c++-common-hooks)
   "Insert the string `std::' at point."
   (interactive)
@@ -527,7 +503,7 @@ quotes, please!\n")))
   (interactive)
   (insert "lambda "))
 
-(defbind lisp-end-of-list nil (("M-_") lisp-mode-common-hooks)
+(defbind lisp-end-of-list nil (("C-M-;") lisp-mode-common-hooks)
   "Move point to the end of the current s-expression."
   (interactive)
   (backward-up-list)
@@ -585,14 +561,70 @@ quotes, please!\n")))
 
 (bind-mode-command-to-key dired-mode-hook
                           wdired-change-to-wdired-mode "C-c C-w")
+
+(declare-function wdired-exit "wdired.el")
 (bind-mode-command-to-key wdired-mode-hook
                           wdired-exit "C-c C-w")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Macro indenting
+;;; Builtin settings:
+;;;
+(auto-fill-mode        t)
+(set-fill-column       72)
+(global-hl-line-mode   t)
+(delete-selection-mode t)
+(display-time-mode     t)
+(show-paren-mode       t)
+(fringe-mode           (cons 2 2))
+(electric-pair-mode)
+(column-number-mode)
+(auto-fill-mode)
+(electric-indent-mode  t)
+(tool-bar-mode         (- 1))
+(menu-bar-mode         (- 1))
+(scroll-bar-mode       (- 1))
+(semantic-mode t)
+
+(declare-function global-semantic-idle-scheduler-mode "semantic/idle.el")
+(global-semantic-idle-scheduler-mode t)
+
+(defvar select-enable-clipboard t)
+(setq inhibit-splash-screen    		      t
+      tab-width                		      2
+      indent-tabs-mode         		      nil
+      user-full-name           		      "Max Bozzi"
+      user-mail-address        		      "maxwelljb22@gmail.com"
+      x-select-enable-clipboard-manager t
+      select-enable-clipboard           t
+      kept-new-versions                 4
+      kept-old-versions                 2
+      echo-keystrokes                   0.001
+      use-dialog-box                    nil
+      visible-bell                      t
+      version-control                   t
+      disabled-command-function         nil
+      backup-by-copying                 t
+      delete-old-versions               t)
+
+(unless indicate-empty-lines
+  (toggle-indicate-empty-lines))
+
+(defvar ff-always-in-other-window t
+  "Find file/other file in new windows.")
+
+;; Backups
+(let ((backup-directory (expand-file-name "~/.emacs.d/saves")))
+  (if (file-writable-p backup-directory)
+      (setq backup-directory-alist (list (cons "." backup-directory)))
+    (warn "Backup directory %S is not writable.  Backups will not be
+made." 'backup-directory)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Macros.  I need a way to generate and save these symbol properties.
+;;;   I'm not so sure about how to go about this.  
 ;;;
 (add-hook 'lisp-mode-hook
-	  (lambda ()
+	  (lambda nil
 	    (set (make-local-variable 'lisp-indent-function)
            'common-lisp-indent-function)))
 
@@ -600,6 +632,7 @@ quotes, please!\n")))
 (put 'with-gensyms 'lisp-indent-function 1)
 (put 'bind-mode-commands 'lisp-indent-function 1)
 (put 'init/when-package-available 'lisp-indent-function 1)
+(put 'defmacro! 'lisp-indent-function 1)
 
 ;;  Missing C++ Keywords introduced in C++11:
 ;;  override, final, alignas, alignof, char16_t, char32_t,
