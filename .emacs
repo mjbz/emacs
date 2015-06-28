@@ -56,9 +56,9 @@ automatic customization file at %s" *init/customization-file-path*))
       (package-installed-p feature)))
 
 (defun prompt-fetch-feature (feature)
-  "Ask the user to install a package from enabled repositories.
-  If the user complies, try to download and install.  Return t
-  if the package was successfully obtained, otherwise nil."
+"Ask the user to install FEATURE from enabled repositories.
+If the user complies, try to download and install.  Return t
+if the package was successfully obtained, otherwise nil."
   (if (yes-or-no-p
        (format "Attempt to fetch `%S' from repositories? "
 	       feature))
@@ -108,7 +108,10 @@ Bind `%s' to keyboard %s via local-set-key."
 (defun bind-mode-commands (mode-hooks command-keys)
   "Bind all of the modes in MODE-HOOKS matching COMMAND-KEYS."
   (cl-loop for mode in mode-hooks do
-           (cl-loop for (command key) in command-keys do
+           (cl-loop for (key command) in command-keys do
+		    (if (or (not (stringp key))
+			    (not (commandp command)))
+			(error "Invalid command specifier"))
                     (eval
                      `(bind-mode-command-to-key ,mode ,command ,key)))))
 
@@ -147,10 +150,11 @@ bound globally to key-notation(s).
   `(progn
      (defun ,name ,arglist ,@body)
      ,(if (cdr key-specs)
-          `(bind-mode-commands ,(cadr key-specs)
-             (quote ,(mapcar (lambda (key)
-                               (list name key))
-                             (car key-specs))))
+          `(bind-mode-commands
+	    ,(cadr key-specs)
+	    (quote ,(mapcar (lambda (key)
+			      (list key name))
+			    (car key-specs))))
         `(global-bind-keys
           (mapcar (lambda (key)
 		    (list key (quote ,name)))
@@ -273,47 +277,40 @@ quotes, please!\n"))
   (icy-mode t))
 
 ;; Smart mode-line
-;; (init/when-package-available (smart-mode-line)
-;;   (declare-function sml/setup "smart-mode-line.el")
-;;   (declare-function sml/apply-theme "smart-mode-line.el")
+(init/when-package-available (smart-mode-line)
+  (declare-function sml/setup "smart-mode-line.el")
+  (declare-function sml/apply-theme "smart-mode-line.el")
 
-;;   (sml/setup)
-;;   (sml/apply-theme 'respectful)
+  (sml/setup)
+  (sml/apply-theme 'dark)
 
-;;   (defvar sml/replacer-regexp-list)
-;;   (add-to-list 'sml/replacer-regexp-list
-;; 	       '("^~/devel/cpp/at-nighttime/" ":AN:")
-;; 	       'append)
-;;   (add-to-list 'sml/replacer-regexp-list
-;; 	       '("^~/devel/cpp/" ":CPP:")
-;; 	       'append)
-;;   (add-to-list 'sml/replacer-regexp-list
-;; 	       '("^~/devel/" ":DEV:")
-;; 	       'append)
-;;   (add-to-list 'sml/replacer-regexp-list
-;; 	       '("^~/devel/lisp" ":LISP:")
-;; 	       'append)
-;;   (sml/fill-char)
-;;   (smart-mode-line-enable))
+  (defvar sml/replacer-regexp-list)
+  (add-to-list 'sml/replacer-regexp-list
+	       '("^~/devel/cpp/at-nighttime/" ":AN:")
+	       'append)
+  (add-to-list 'sml/replacer-regexp-list
+	       '("^~/devel/cpp/" ":CPP:")
+	       'append)
+  (add-to-list 'sml/replacer-regexp-list
+	       '("^~/devel/" ":DEV:")
+	       'append)
+  (add-to-list 'sml/replacer-regexp-list
+	       '("^~/devel/lisp" ":LISP:")
+	       'append)
+  
+  (smart-mode-line-enable))
  
 ;; Drew Adam's Pretty-lambda
 (init/when-package-available (pretty-lambdada)
-  (pretty-lambda-for-modes)) 
+  (pretty-lambda-for-modes))
 
 ;; Paredit
 (init/when-package-available (paredit)
-  (let ((turn-on-paredit-hooks '(emacs-lisp-mode-hook
-                                 ielm-mode-hook lisp-mode-hook
-                                 lisp-interaction-mode-hook
-                                 ielm-mode-hook
-                                 scheme-mode-hook)))
-    "List of hooks to which `enable-paredit-mode' will be attached."
-    (autoload 'paredit-mode "paredit" "enable paredit in lisp")
-    (mapc (lambda (hook)
-	    (add-hook
-	     hook #'enable-paredit-mode))
-	  turn-on-paredit-hooks)))
-
+  (autoload 'paredit-mode "paredit" "enable paredit in lisp")
+  (mapc (lambda (hook)
+	  (add-hook
+	   hook #'enable-paredit-mode))
+	lisp-mode-common-hooks))
 
 ;; Slime
 (defvar *my-common-lisp-interpreter* "/usr/bin/sbcl"
@@ -342,10 +339,10 @@ quotes, please!\n"))
           (warn "Can't find QuickLisp at %S." quicklisp)))
       
       (bind-mode-commands 'slime-mode-hook
-        '((slime-documentation "C-h f")
-          (describe-function "C-h M-f")
-          (slime-describe-symbol "C-h v")
-          (describe-variable "C-h M-v"))))))
+        '(("C-h f" slime-documentation)
+          ("C-h M-f" describe-function)
+          ("C-h v" slime-describe-symbol)
+          ("C-h M-v" describe-variable))))))
 
 ;; EDE
 (when nil
@@ -357,7 +354,12 @@ quotes, please!\n"))
   (declare-function global-auto-complete-mode "auto-complete.el")
   (declare-function ac-config-default "auto-complete-config.el")
   (global-auto-complete-mode t)
-  (ac-config-default))
+  (ac-config-default)
+  (setq after-save-hook
+	(remove 'ac-clear-variables-after-save
+		after-save-hook)))
+;; VC
+(setq vc-handled-backends '(Hg Git))
 
 ;; Irony
 (init/when-package-available (irony)
@@ -412,16 +414,15 @@ quotes, please!\n"))
   (add-hook 'LaTeX-mode-hook #'turn-on-reftex)
   (add-hook 'LaTeX-mode-hook #'auto-fill-mode))
 
-;; Wdired
+;; Dired and Wdired
 (add-hook 'wdired-mode-hook  #'auto-revert-mode)
-
-;; Dired
 (add-hook 'dired-mode-hook   #'auto-revert-mode)
+(bind-mode-commands dired-common-hooks
+  '(("C-s" dired-isearch-filenames)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Keybindings and text-editing
 ;;;
-
 ;; Swap the meanings of C-i and <tab> so that I can rebind C-i.
 (define-key function-key-map    [tab] nil)
 (define-key key-translation-map [9] [tab])
@@ -448,13 +449,16 @@ quotes, please!\n"))
    ("C-r"     isearch-backward-regexp)
    ("C-c C-s" isearch-forward)
    ("C-c C-r" isearch-backward)
-   ("C-x C-d" dired)
-   ("C-;"     iedit-mode)))
+   ("C-x C-d" dired)))
+
+(init/when-package-available (iedit)
+  (global-bind-keys
+   '(("C-;" iedit-mode))))
 
 (defbind go-to-scratch-buffer nil (("<f6>"))
   "Jump instantly to the scratch buffer."
   (interactive)
-  (switch-to-buffer "*scratch*"))
+  (switch-to-buffer "*scratch*")) 
 
 (defbind insert-std nil (("C-M-;") c-c++-common-hooks)
   "Insert the string `std::' at point."
@@ -566,6 +570,9 @@ quotes, please!\n"))
 (bind-mode-command-to-key wdired-mode-hook
                           wdired-exit "C-c C-w")
 
+(bind-mode-commands lisp-mode-common-hooks
+  '(("<C-backspace>" paredit-backward-kill-word)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Builtin settings:
 ;;;
@@ -621,7 +628,7 @@ made." 'backup-directory)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Macros.  I need a way to generate and save these symbol properties.
-;;;   I'm not so sure about how to go about this.  
+;;;   I'm not so sure about how to go about this.
 ;;;
 (add-hook 'lisp-mode-hook
 	  (lambda nil
