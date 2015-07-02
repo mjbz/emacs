@@ -1,3 +1,4 @@
+
 ;;; .emacs --- Max  Bozzi's GNU Emacs init file.
 ;;;
 ;;; Copyright (C) 2013-2015 Max Bozzi
@@ -273,32 +274,32 @@ quotes, please!\n"))
 
 ;; Icicles:
 (init/when-package-available (icicles)
-  (require 'icicles)
-  (icy-mode t))
+  (icy-mode))
 
 ;; Smart mode-line
-(init/when-package-available (smart-mode-line)
-  (declare-function sml/setup "smart-mode-line.el")
-  (declare-function sml/apply-theme "smart-mode-line.el")
+(when nil
+  (init/when-package-available (smart-mode-line)
+    (declare-function sml/setup "smart-mode-line.el")
+    (declare-function sml/apply-theme "smart-mode-line.el")
 
-  (sml/setup)
-  (sml/apply-theme 'dark)
+    (sml/setup)
+    (sml/apply-theme 'dark)
 
-  (defvar sml/replacer-regexp-list)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/cpp/at-nighttime/" ":AN:")
-	       'append)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/cpp/" ":CPP:")
-	       'append)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/" ":DEV:")
-	       'append)
-  (add-to-list 'sml/replacer-regexp-list
-	       '("^~/devel/lisp" ":LISP:")
-	       'append)
+    (defvar sml/replacer-regexp-list)
+    (add-to-list 'sml/replacer-regexp-list
+                 '("^~/devel/cpp/at-nighttime/" ":AN:")
+                 'append)
+    (add-to-list 'sml/replacer-regexp-list
+                 '("^~/devel/cpp/" ":CPP:")
+                 'append)
+    (add-to-list 'sml/replacer-regexp-list
+                 '("^~/devel/" ":DEV:")
+                 'append)
+    (add-to-list 'sml/replacer-regexp-list
+                 '("^~/devel/lisp" ":LISP:")
+                 'append)
   
-  (smart-mode-line-enable))
+    (smart-mode-line-enable)))
  
 ;; Drew Adam's Pretty-lambda
 (init/when-package-available (pretty-lambdada)
@@ -310,7 +311,8 @@ quotes, please!\n"))
   (mapc (lambda (hook)
 	  (add-hook
 	   hook #'enable-paredit-mode))
-	lisp-mode-common-hooks))
+        lisp-mode-common-hooks)
+  (enable-paredit-mode))
 
 ;; Slime
 (defvar *my-common-lisp-interpreter* "/usr/bin/sbcl"
@@ -432,8 +434,11 @@ quotes, please!\n"))
       (list (kbd "M-i")
             (kbd "<tab>")
             (kbd "M-o")
-            (kbd "C-M-o")
-            (kbd "C-z")))
+            (kbd "C-M-o")))
+
+(let ((terminal-frame-type t))
+ (when (equal terminal-frame-type (framep (selected-frame)))
+   (global-unset-key (kbd "C-z"))))
 
 (global-bind-keys
  '(("C-'"     ff-find-other-file)
@@ -458,7 +463,7 @@ quotes, please!\n"))
 (defbind go-to-scratch-buffer nil (("<f6>"))
   "Jump instantly to the scratch buffer."
   (interactive)
-  (switch-to-buffer "*scratch*")) 
+  (switch-to-buffer "*scratch*"))
 
 (defbind insert-std nil (("C-M-;") c-c++-common-hooks)
   "Insert the string `std::' at point."
@@ -570,8 +575,9 @@ quotes, please!\n"))
 (bind-mode-command-to-key wdired-mode-hook
                           wdired-exit "C-c C-w")
 
-(bind-mode-commands lisp-mode-common-hooks
-  '(("<C-backspace>" paredit-backward-kill-word)))
+(init/when-package-available (paredit)
+  (bind-mode-commands lisp-mode-common-hooks
+    '(("<C-backspace>" paredit-backward-kill-word))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Builtin settings:
@@ -630,6 +636,100 @@ made." 'backup-directory)))
 ;;; Macros.  I need a way to generate and save these symbol properties.
 ;;;   I'm not so sure about how to go about this.
 ;;;
+(defvar symbol-indent-info-file
+  (expand-file-name "~/.emacs.d/lisp-sym-indent-info.el"))
+
+(defun generate-put-indent-form (symbol indent-form) 
+  `(put ',symbol 'lisp-indent-function ',indent-form))
+
+(defun specially-indent-form nil
+  "Add an entry in `symbol-indent-info-file' specifying how to
+indent a certain lisp form.  
+
+The point of this interface is to keep the lists of indent
+declarations for macros and such out of the init file, and to
+allow new entries to be added on the fly. "
+  (interactive)
+  (let ((enable-recursive-minibuffers t)
+        (propertize-form
+         (generate-put-indent-form (prompt-for-symbol)
+                                   (prompt-for-indent-form))))
+    (if (not (file-exists-p symbol-indent-info-file))
+	(add-sym-info-header))
+    (write-region
+     (format "%S\n" propertize-form)
+     nil symbol-indent-info-file 'append)
+    ;; And add the property immediately, too:
+    (eval propertize-form)))
+
+(defun prompt-for-symbol nil
+  "Prompt the user for a valid symbol."
+  (interactive)
+  (let* ((sym (or (symbol-at-point)
+                  (function-called-at-point))))
+    (make-symbol
+     (completing-read (if sym
+                          (format "Symbol (default %s): " sym)
+                        "Symbol: ")
+                      obarray #'symbolp 'confirm nil nil
+                      (and sym (symbol-name sym))))))
+
+(defun prompt-for-indent-form nil
+  "Prompt the user for a valid form usable as a property
+specifier for specially indenting a function call."
+  (interactive)
+  (let* ((string
+	  (completing-read (format "Indent: ")
+			   '("1" "2" "3" "4" "5"
+			     "6" "7" "8" "9" "defun")
+			   nil 'confirm))
+	 (string-num (string-to-number string))
+	 (string-sym (make-symbol      string))
+	 (val
+	  (or (if (and (integerp string-num)
+		       (plusp string-num))    string-num)
+	      (if (string= "defun" string)    'defun)
+	      (if (functionp string-sym)      string-sym))))
+    (if val
+	val
+      (error "Incorrect specifier.  See `lisp-indent-function'"))))
+
+(defun add-sym-info-header nil
+  "If `symbol-indent-info-file' does not exist, then try to write
+the file-header, creating the file and specifying versions."
+  (write-region
+   (format
+    (concat ";;;; This is a file generated by calls to"
+	    " `specially-indent-form'.\n;;;; Be carefu"
+	    "l editing it by hand, contents you add mi"
+	    "ght be mangled.\n\n'(version . 1)\n\n"))
+   nil symbol-indent-info-file))
+
+(defun remove-duplicate-indent-info nil
+  (let ((forms nil)
+	(syms-to-forms (make-hash-table :test 'equal)))
+    (ignore-errors
+      (with-temp-file symbol-indent-info-file
+	(insert-file-contents symbol-indent-info-file)
+	(cl-loop do (push (read (current-buffer)) forms))))
+    (let ((file-contents (nreverse forms)))
+      (if (not (equal (car file-contents)
+		      '(quote (version . 1)))) 
+	  (error "Version mismatch"))
+      (mapc (lambda (form)
+	      (puthash (cadadr form) form syms-to-forms))
+	    (cdr file-contents)) ; exclude the version tag!
+      (add-sym-info-header)
+      (maphash (lambda (key value)
+		 (declare (ignore key))
+		 (write-region
+		  (format "%S\n" value)
+		  nil
+		  symbol-indent-info-file
+		  'append))
+	       syms-to-forms))))
+(remove-duplicate-indent-info)
+
 (add-hook 'lisp-mode-hook
 	  (lambda nil
 	    (set (make-local-variable 'lisp-indent-function)
